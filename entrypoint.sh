@@ -61,9 +61,9 @@ cleanup_snapshots() {
         if [ "$clone" != "-" ]; then
             echo "Processing snapshot: $snapshot with clone: $clone"
 
-            echo "Promoting clone: $clone"
-            if ! zfs promote "$clone"; then
-                echo "Error: Failed to promote clone: $clone"
+            echo "Destroying clone: $clone"
+            if ! zfs destroy "$clone"; then
+                echo "Error: Failed to destroy clone dataset: $clone"
                 continue
             fi
 
@@ -73,11 +73,6 @@ cleanup_snapshots() {
                 continue
             fi
 
-            echo "Destroying clone dataset: $clone"
-            if ! zfs destroy "$clone"; then
-                echo "Error: Failed to destroy clone dataset: $clone"
-                continue
-            fi
         else
             echo "Destroying snapshot: $snapshot (no clones)"
             if ! zfs destroy "$snapshot"; then
