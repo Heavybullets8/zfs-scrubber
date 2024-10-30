@@ -27,7 +27,7 @@ scrub_pool() {
   echo "Monitoring scrub progress..."
 
   while true; do
-    sleep 15
+    sleep 5
     status=$(zpool status "$ZFS_POOL")
     scrub_line=$(echo "$status" | grep "scan:")
     echo "$scrub_line"
@@ -53,16 +53,14 @@ cleanup_snapshots() {
   echo "Starting cleanup on pool: $ZFS_POOL"
   echo "===================================================="
 
-  # Find snapshots with dependent clones
-  snapshots=$(zfs list -H -o name -t snapshot -r "$ZFS_POOL")
-  for snapshot in $snapshots; do
-    # Check if snapshot has dependent clones
-    clones=$(zfs get -H -o value clones "$snapshot")
-    if [ "$clones" != "-" ]; then
+  mapfile -t snapshots < <(zfs list -H -o name -t snapshot -r "$ZFS_POOL")
+
+  for snapshot in "${snapshots[@]}"; do
+    mapfile -t clones < <(zfs list -H -o name,origin -t filesystem,volume -r "$ZFS_POOL" | awk -v snapshot="$snapshot" '$2 == snapshot {print $1}')
+
+    if [ "${#clones[@]}" -gt 0 ]; then
       echo "Processing snapshot with dependent clones: $snapshot"
-      # Get list of dependent clones
-      clone_list=$(zfs get -H -o value clones "$snapshot" | tr ',' ' ')
-      for clone in $clone_list; do
+      for clone in "${clones[@]}"; do
         echo "Promoting clone: $clone"
         if ! zfs promote "$clone"; then
           echo "Error: Failed to promote clone: $clone"
