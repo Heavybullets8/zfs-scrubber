@@ -1,6 +1,5 @@
 #!/bin/sh
 
-# entrypoint.sh
 set -e
 
 if [ -z "$ZFS_POOL" ]; then
