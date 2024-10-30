@@ -53,25 +53,21 @@ cleanup_snapshots() {
   echo "Starting cleanup on pool: $ZFS_POOL"
   echo "===================================================="
 
-  mapfile -t snapshots < <(zfs list -H -o name -t snapshot -r "$ZFS_POOL")
+  mapfile -t snapshots < <(zfs list -H -o name -t snapshot -s clones -r "$ZFS_POOL")
 
   for snapshot in "${snapshots[@]}"; do
-    mapfile -t clones < <(zfs list -H -o name,origin -t filesystem,volume -r "$ZFS_POOL" | awk -v snapshot="$snapshot" '$2 == snapshot {print $1}')
+    mapfile -t clones < <(zfs get -o value -H clones "$snapshot")
 
     if [ "${#clones[@]}" -gt 0 ]; then
       echo "Processing snapshot with dependent clones: $snapshot"
       for clone in "${clones[@]}"; do
+        # Promote, but dont delete since openebs should be handling that
         echo "Promoting clone: $clone"
         if ! zfs promote "$clone"; then
           echo "Error: Failed to promote clone: $clone"
           continue
         fi
       done
-      echo "Destroying snapshot: $snapshot"
-      if ! zfs destroy "$snapshot"; then
-        echo "Error: Failed to destroy snapshot: $snapshot"
-        continue
-      fi
     fi
   done
 
