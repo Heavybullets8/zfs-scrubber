@@ -52,7 +52,7 @@ cleanup_snapshots() {
     echo "Starting cleanup on pool: $ZFS_POOL"
     echo "===================================================="
 
-    mapfile -t snapshot_clone_pairs < <(zfs list -H -t snapshot -o name,clones -r "$ZFS_POOL")
+    mapfile -t snapshot_clone_pairs < <(zfs list -H -t snapshot -o name,clones -S creation -r "$ZFS_POOL")
 
     for line in "${snapshot_clone_pairs[@]}"; do
         snapshot=$(echo "$line" | awk -F'\t' '{print $1}')
