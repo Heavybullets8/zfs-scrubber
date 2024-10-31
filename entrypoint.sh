@@ -29,7 +29,7 @@ scrub_pool() {
         sleep 30
         echo "--------"
         status=$(zpool status "$ZFS_POOL")
-        scrub_line=$(echo "$status" | grep "scan: -A 2")
+        scrub_line=$(printf "%s\n" "$status" | grep -A 2 "scan:")
         echo "$scrub_line"
         if echo "$scrub_line" | grep -q "scrub repaired"; then
             echo "===================================================="
