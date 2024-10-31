@@ -26,9 +26,10 @@ scrub_pool() {
     echo "Monitoring scrub progress..."
 
     while true; do
-        sleep 5
+        sleep 30
+        echo "--------"
         status=$(zpool status "$ZFS_POOL")
-        scrub_line=$(echo "$status" | grep "scan:")
+        scrub_line=$(echo "$status" | grep "scan: -A 2")
         echo "$scrub_line"
         if echo "$scrub_line" | grep -q "scrub repaired"; then
             echo "===================================================="
@@ -53,6 +54,11 @@ cleanup_snapshots() {
     echo "===================================================="
 
     mapfile -t snapshot_clone_pairs < <(zfs list -H -t snapshot -o name,clones -S creation -r "$ZFS_POOL")
+
+    if [ -z "${snapshot_clone_pairs[*]}" ]; then
+        echo "No snapshots found"
+        return
+    fi
 
     for line in "${snapshot_clone_pairs[@]}"; do
         snapshot=$(echo "$line" | awk -F'\t' '{print $1}')
