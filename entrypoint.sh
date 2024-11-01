@@ -2,24 +2,82 @@
 
 set -e
 
+# Set default values
+: "${PUSHOVER_NOTIFICATION:=false}"
+: "${ACTION:=scrub}"
+
+exit_bool=false
+
+# Validate environment variables
+if [ "$PUSHOVER_NOTIFICATION" = true ]; then
+    if [ -z "$PUSHOVER_USER_KEY" ]; then
+        echo "Error: \"PUSHOVER_USER_KEY\" is missing while \"PUSHOVER_NOTIFICATION\" is \"true\"."
+        exit_bool=true
+    fi
+
+    if [ -z "$PUSHOVER_API_TOKEN" ]; then
+        echo "Error: \"PUSHOVER_API_TOKEN\" is missing while \"PUSHOVER_NOTIFICATION\" is \"true\"."
+        exit_bool=true
+    fi
+fi
+
 if [ -z "$ZFS_POOL" ]; then
-    echo "Error: No ZFS_POOL specified. Exiting."
+    echo "Error: No ZFS_POOL specified."
+    exit_bool=true
+fi
+
+if [ "$exit_bool" = true ]; then
+    echo "Exiting due to previous errors..."
     exit 1
 fi
 
-if [ -z "$ACTION" ]; then
-    echo "Error: No ACTION specified. Exiting."
-    exit 1
-fi
+send_pushover_notification() {
+    if [ "$PUSHOVER_NOTIFICATION" = true ]; then
+        local message="$1"
+        local title="$2"
+        response=$(curl -s -w "%{http_code}" --form-string "token=${PUSHOVER_API_TOKEN}" \
+            --form-string "user=${PUSHOVER_USER_KEY}" \
+            --form-string "message=${message}" \
+            --form-string "title=${title}" \
+            --form-string "html=1" \
+            https://api.pushover.net/1/messages.json)
+
+        http_code="${response: -3}"
+        if [ "$http_code" -ne 200 ]; then
+            echo "Warning: Failed to send Pushover notification. HTTP status code: $http_code"
+        fi
+    fi
+}
+
+send_pushover_error_notification() {
+    if [ "$PUSHOVER_NOTIFICATION" = true ]; then
+        local message="$1"
+        local title="$2"
+        response=$(curl -s -w "%{http_code}" --form-string "token=${PUSHOVER_API_TOKEN}" \
+            --form-string "user=${PUSHOVER_USER_KEY}" \
+            --form-string "message=${message}" \
+            --form-string "title=${title}" \
+            --form-string "priority=1" \
+            --form-string "html=1" \
+            https://api.pushover.net/1/messages.json)
+
+        http_code="${response: -3}"
+        if [ "$http_code" -ne 200 ]; then
+            echo "Warning: Failed to send Pushover error notification. HTTP status code: $http_code"
+        fi
+    fi
+}
 
 scrub_pool() {
     echo "===================================================="
     echo "Starting scrub on pool: $ZFS_POOL"
     echo "===================================================="
 
-    if ! zpool scrub "$ZFS_POOL"; then
-        echo "Error: Failed to start scrub on pool: $ZFS_POOL"
-        exit 1
+    if output=$(zpool scrub "$ZFS_POOL" 2>&1); then
+        send_pushover_notification "<b>🛠️ Starting scrub on pool:</b> ${ZFS_POOL}" "ZFS Scrub Started"
+    else
+        send_pushover_error_notification $'❌ <b>Failed to start scrub on pool:</b> '"${ZFS_POOL}"$'\n<pre>'"${output}"'</pre>' "ZFS Scrub Failed"
+        return 1
     fi
 
     echo "Scrub started on pool: $ZFS_POOL"
@@ -35,6 +93,10 @@ scrub_pool() {
             echo "===================================================="
             echo "Scrub completed on pool: $ZFS_POOL"
             echo "===================================================="
+
+            scan_line=$(printf "%s\n" "$status" | grep "scan:")
+            send_pushover_notification "<b>✅ Scrub completed on pool:</b> ${ZFS_POOL}"$'\n<pre>'"${scan_line}"'</pre>' "ZFS Scrub Completed"
+
             break
         elif echo "$scrub_line" | grep -q "scrub in progress"; then
             continue
@@ -42,8 +104,8 @@ scrub_pool() {
             echo "Resilver in progress on pool: $ZFS_POOL"
             continue
         else
-            echo "Error: Unexpected scrub status."
-            exit 1
+            send_pushover_error_notification "❌ Unexpected scrub status on pool: ${ZFS_POOL}"$'\n<pre>'"${scrub_line}"'</pre>' "ZFS Scrub Error"
+            return 1
         fi
     done
 }
