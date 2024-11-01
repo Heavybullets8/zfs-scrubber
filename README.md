@@ -1,6 +1,6 @@
 # ZFS Scrub and Cleanup Script with Pushover Notifications
 
-This repository contains a Bash script designed to perform ZFS pool scrubbing and cleanup operations within a Docker container or Kubernetes environment. The script supports sending real-time notifications via Pushover when a scrub starts and completes.
+This repository contains a Bash script designed to perform ZFS pool scrubbing and cleanup operations within a Docker container, specifically designed for Talos Linux. The script supports sending real-time notifications via Pushover when a scrub starts and completes.
 
 ## Usage
 
