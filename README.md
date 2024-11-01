@@ -72,10 +72,10 @@ spec:
           app:
             image:
               repository: ghcr.io/heavybullets8/zfs-scrubber
-              tag: 0.0.0@sha256:bff111ac67c8e3d839914c93cac8efc03559638a15846702cc562d867ff533c5
+              tag: 1.0.3
             env:
               ZFS_POOL: "speed"
-              ACTION: "all"
+              PUSHOVER_NOTIFICATION: true
             securityContext:
               privileged: true
 
@@ -85,6 +85,7 @@ spec:
         hostPath: /dev/zfs
         globalMounts:
           - path: /dev/zfs
+
 ```
 
 ## Notes
