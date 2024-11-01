@@ -36,8 +36,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/zfs-scrubber:latest
-            ghcr.io/${{ github.repository_owner }}/zfs-scrubber:${{ env.VERSION }}
+            ghcr.io/heavybullets8/zfs-scrubber:latest
+            ghcr.io/heavybullets8/zfs-scrubber:${{ env.VERSION }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
