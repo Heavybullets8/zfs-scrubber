@@ -2,6 +2,8 @@
 
 This repository contains a Bash script designed to perform ZFS pool scrubbing and cleanup operations within a Docker container, specifically designed for Talos Linux. The script supports sending real-time notifications via Pushover when a scrub starts and completes.
 
+Really just for my personal use, but I open sourced it, in the event someone else finds it useful. 
+
 ## Usage
 
 ### Environment Variables
@@ -72,7 +74,7 @@ spec:
           app:
             image:
               repository: ghcr.io/heavybullets8/zfs-scrubber
-              tag: 1.0.3@sha256:b90925da9ccf30d9de25c4a7012f057270d19ff2e3d83869bb21fcb0b3c7476a
+              tag: 1.0.4@sha256:68e83a047bfe9d16a8cf40b5b2c9f7cf01fceb80e0803fcd0322a0a7c9afd92c
             env:
               ZFS_POOL: "speed"
               PUSHOVER_NOTIFICATION: true
