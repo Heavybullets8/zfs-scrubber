@@ -2,13 +2,19 @@
 
 set -e
 
-# Set default values
 : "${PUSHOVER_NOTIFICATION:=false}"
 : "${ACTION:=scrub}"
 
 exit_bool=false
 
-# Validate environment variables
+if [ -z "$TALOS_VERSION" ]; then
+    echo "Error: TALOS_VERSION environment variable not set."
+    exit_bool=true
+elif ! ZFS_IMAGE=$(crane export "ghcr.io/siderolabs/extensions:${TALOS_VERSION}" | tar x -O image-digests | grep zfs | awk '{print $1}'); then
+    echo "Error: Could not find a compatible ZFS extension for Talos $TALOS_VERSION."
+    exit_bool=true
+fi
+
 if [ "$PUSHOVER_NOTIFICATION" = true ]; then
     if [ -z "$PUSHOVER_USER_KEY" ]; then
         echo "Error: \"PUSHOVER_USER_KEY\" is missing while \"PUSHOVER_NOTIFICATION\" is \"true\"."
@@ -30,6 +36,13 @@ if [ "$exit_bool" = true ]; then
     echo "Exiting due to previous errors..."
     exit 1
 fi
+
+echo "Installing ZFS from $ZFS_IMAGE..."
+if ! crane export "$ZFS_IMAGE" | tar --strip-components=1 -x -C / ;then
+    echo "Error: Failed to extract ZFS extension"
+    exit 1
+fi
+echo
 
 send_pushover_notification() {
     if [ "$PUSHOVER_NOTIFICATION" = true ]; then
