@@ -117,6 +117,7 @@ scrub_pool() {
             echo "Resilver in progress on pool: $ZFS_POOL"
             continue
         else
+            echo "Unexpected scrub status on pool: ${ZFS_POOL}, status: ${scrub_line}"
             send_pushover_error_notification "❌ Unexpected scrub status on pool: ${ZFS_POOL}"$'\n<pre>'"${scrub_line}"'</pre>' "ZFS Scrub Error"
             return 1
         fi
