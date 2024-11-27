@@ -15,6 +15,17 @@ elif ! ZFS_IMAGE=$(crane export "ghcr.io/siderolabs/extensions:${TALOS_VERSION}"
     exit_bool=true
 fi
 
+if [ "$exit_bool" = false ]; then
+    echo "Verifying ZFS image signature..."
+    if ! cosign verify \
+        --certificate-identity-regexp '@siderolabs\.com$' \
+        --certificate-oidc-issuer https://accounts.google.com \
+        "$ZFS_IMAGE" > /dev/null 2>&1; then
+        echo "Error: Image signature verification failed for $ZFS_IMAGE."
+        exit_bool=true
+    fi
+fi
+
 if [ "$PUSHOVER_NOTIFICATION" = true ]; then
     if [ -z "$PUSHOVER_USER_KEY" ]; then
         echo "Error: \"PUSHOVER_USER_KEY\" is missing while \"PUSHOVER_NOTIFICATION\" is \"true\"."
@@ -38,8 +49,8 @@ if [ "$exit_bool" = true ]; then
 fi
 
 echo "Installing ZFS from $ZFS_IMAGE..."
-if ! crane export "$ZFS_IMAGE" | tar --strip-components=1 -x -C / ;then
-    echo "Error: Failed to extract ZFS extension"
+if ! crane export "$ZFS_IMAGE" | tar --strip-components=1 -x -C / ; then
+    echo "Error: Failed to extract ZFS extension."
     exit 1
 fi
 echo
