@@ -20,7 +20,7 @@ if [ "$exit_bool" = false ]; then
     if ! cosign verify \
         --certificate-identity-regexp '@siderolabs\.com$' \
         --certificate-oidc-issuer https://accounts.google.com \
-        "$ZFS_IMAGE" > /dev/null 2>&1; then
+        "$ZFS_IMAGE" >/dev/null 2>&1; then
         echo "Error: Image signature verification failed for $ZFS_IMAGE."
         exit_bool=true
     fi
@@ -49,7 +49,7 @@ if [ "$exit_bool" = true ]; then
 fi
 
 echo "Installing ZFS from $ZFS_IMAGE..."
-if ! crane export "$ZFS_IMAGE" | tar --strip-components=1 -x -C / ; then
+if ! crane export "$ZFS_IMAGE" | tar --strip-components=1 -x -C /; then
     echo "Error: Failed to extract ZFS extension."
     exit 1
 fi
@@ -139,40 +139,61 @@ cleanup_snapshots() {
     echo "===================================================="
     echo "Starting cleanup on pool: $ZFS_POOL"
     echo "===================================================="
-
-    mapfile -t snapshot_clone_pairs < <(zfs list -H -t snapshot -o name,clones -S creation -r "$ZFS_POOL")
-
-    if [ -z "${snapshot_clone_pairs[*]}" ]; then
-        echo "No snapshots found"
+    mapfile -t snapshot_clone_pairs < <(zfs get -H -o name,value -t snapshot clones | grep "^${ZFS_POOL}/pvc-")
+    if [ -z "${snapshot_clone_pairs[*]:-}" ]; then
+        echo "Nothing to cleanup."
         return
     fi
 
     for line in "${snapshot_clone_pairs[@]}"; do
-        snapshot=$(echo "$line" | awk -F'\t' '{print $1}')
-        clone=$(echo "$line" | awk -F'\t' '{print $2}')
+        snapshot=$(echo "$line" | awk -F '\t' '{print $1}')
+        clone=$(echo "$line" | awk -F '\t' '{print $2}')
 
-        if [ "$clone" != "-" ]; then
-            echo "Processing snapshot: $snapshot with clone: $clone"
-
-            echo "Destroying clone: $clone"
-            if ! zfs destroy "$clone"; then
-                echo "Error: Failed to destroy clone dataset: $clone"
-                continue
-            fi
-
-            echo "Destroying snapshot: $snapshot"
-            if ! zfs destroy "$snapshot"; then
-                echo "Error: Failed to destroy snapshot: $snapshot"
-                continue
-            fi
-
-        else
-            echo "Destroying snapshot: $snapshot (no clones)"
-            if ! zfs destroy "$snapshot"; then
-                echo "Error: Failed to destroy snapshot: $snapshot"
-                continue
-            fi
+        if [ -z "$snapshot" ] || [ -z "$clone" ]; then
+            echo "Error: Invalid snapshot/clone pair found"
+            echo "  Snapshot: ${snapshot:-<empty>}"
+            echo "  Clone: ${clone:-<empty>}"
+            echo "Skipping this pair..."
+            echo
+            continue
         fi
+
+        original_dataset=$(echo "$snapshot" | cut -d'@' -f1)
+
+        if [ -z "$original_dataset" ]; then
+            echo "Error: Could not determine original dataset from snapshot: $snapshot"
+            echo "Skipping this pair..."
+            echo
+            continue
+        fi
+
+        echo
+        echo "Processing Snapshot Pair"
+        echo "----------------------"
+        echo "  Snapshot: $snapshot"
+        echo "  Clone:    $clone"
+        echo
+
+        echo "  → Promoting clone"
+        if ! zfs promote "$clone"; then
+            echo "    Error: Failed to promote clone: $clone"
+            continue
+        fi
+
+        echo "  → Destroying original dataset"
+        if ! zfs destroy "$original_dataset"; then
+            echo "    Error: Failed to destroy original dataset: $original_dataset"
+            continue
+        fi
+
+        echo "  → Destroying snapshot"
+        if ! zfs destroy "$clone@$(basename "$snapshot")"; then
+            echo "    Error: Failed to destroy snapshot: $snapshot"
+            continue
+        fi
+
+        echo
+        echo "  ✓ Cleanup complete for this pair"
         echo
     done
 
