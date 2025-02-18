@@ -139,29 +139,22 @@ cleanup_snapshots() {
     echo "===================================================="
     echo "Starting cleanup on pool: $ZFS_POOL"
     echo "===================================================="
-    mapfile -t snapshot_clone_pairs < <(zfs get -H -o name,value -t snapshot clones | grep "^${ZFS_POOL}/pvc-")
+    mapfile -t snapshot_clone_pairs < <(zfs get -H -o name,value -t snapshot clones | grep "^${ZFS_POOL}/pvc-" | grep -v "[[:space:]]-$")
     if [ -z "${snapshot_clone_pairs[*]:-}" ]; then
         echo "Nothing to cleanup."
         return
     fi
 
     for line in "${snapshot_clone_pairs[@]}"; do
-        snapshot=$(echo "$line" | awk -F '\t' '{print $1}')
-        clone=$(echo "$line" | awk -F '\t' '{print $2}')
+        temp_source=$(echo "$line" | awk -F '\t' '{print $1}' | cut -d'@' -f1)
+        snapshot_name=$(echo "$line" | awk -F '\t' '{print $1}' | cut -d'@' -f2)
+        active_pvc=$(echo "$line" | awk -F '\t' '{print $2}')
 
-        if [ -z "$snapshot" ] || [ -z "$clone" ]; then
-            echo "Error: Invalid snapshot/clone pair found"
-            echo "  Snapshot: ${snapshot:-<empty>}"
-            echo "  Clone: ${clone:-<empty>}"
-            echo "Skipping this pair..."
-            echo
-            continue
-        fi
-
-        original_dataset=$(echo "$snapshot" | cut -d'@' -f1)
-
-        if [ -z "$original_dataset" ]; then
-            echo "Error: Could not determine original dataset from snapshot: $snapshot"
+        if [ -z "$temp_source" ] || [ -z "$snapshot_name" ] || [ -z "$active_pvc" ]; then
+            echo "Error: Invalid data found"
+            echo "  Temporary source: ${temp_source:-<empty>}"
+            echo "  Snapshot: ${snapshot_name:-<empty>}"
+            echo "  Active PVC: ${active_pvc:-<empty>}"
             echo "Skipping this pair..."
             echo
             continue
@@ -170,25 +163,26 @@ cleanup_snapshots() {
         echo
         echo "Processing Snapshot Pair"
         echo "----------------------"
-        echo "  Snapshot: $snapshot"
-        echo "  Clone:    $clone"
+        echo "  Temporary source: $temp_source"
+        echo "  Snapshot: $snapshot_name"
+        echo "  Active PVC: $active_pvc"
         echo
 
-        echo "  → Promoting clone"
-        if ! zfs promote "$clone"; then
-            echo "    Error: Failed to promote clone: $clone"
+        echo "  → Promoting active PVC"
+        if ! zfs promote "$active_pvc"; then
+            echo "    Error: Failed to promote: $active_pvc"
             continue
         fi
 
-        echo "  → Destroying original dataset"
-        if ! zfs destroy "$original_dataset"; then
-            echo "    Error: Failed to destroy original dataset: $original_dataset"
+        echo "  → Destroying temporary source"
+        if ! zfs destroy "$temp_source"; then
+            echo "    Error: Failed to destroy dataset: $temp_source"
             continue
         fi
 
         echo "  → Destroying snapshot"
-        if ! zfs destroy "$clone@$(basename "$snapshot")"; then
-            echo "    Error: Failed to destroy snapshot: $snapshot"
+        if ! zfs destroy "$active_pvc@$snapshot_name"; then
+            echo "    Error: Failed to destroy snapshot: $active_pvc@$snapshot_name"
             continue
         fi
 
