@@ -59,35 +59,22 @@ send_pushover_notification() {
     if [ "$PUSHOVER_NOTIFICATION" = true ]; then
         local message="$1"
         local title="$2"
-        response=$(curl -s -w "%{http_code}" --form-string "token=${PUSHOVER_API_TOKEN}" \
-            --form-string "user=${PUSHOVER_USER_KEY}" \
-            --form-string "message=${message}" \
-            --form-string "title=${title}" \
-            --form-string "html=1" \
-            https://api.pushover.net/1/messages.json)
+        local priority="${3:-}"
 
+        curl_cmd=(curl -s -w "%{http_code}" --form-string "token=${PUSHOVER_API_TOKEN}"
+            --form-string "user=${PUSHOVER_USER_KEY}"
+            --form-string "message=${message}"
+            --form-string "title=${title}"
+            --form-string "html=1")
+
+        if [ -n "$priority" ]; then
+            curl_cmd+=(--form-string "priority=${priority}")
+        fi
+
+        response=$("${curl_cmd[@]}" https://api.pushover.net/1/messages.json)
         http_code="${response: -3}"
         if [ "$http_code" -ne 200 ]; then
             echo "Warning: Failed to send Pushover notification. HTTP status code: $http_code"
-        fi
-    fi
-}
-
-send_pushover_error_notification() {
-    if [ "$PUSHOVER_NOTIFICATION" = true ]; then
-        local message="$1"
-        local title="$2"
-        response=$(curl -s -w "%{http_code}" --form-string "token=${PUSHOVER_API_TOKEN}" \
-            --form-string "user=${PUSHOVER_USER_KEY}" \
-            --form-string "message=${message}" \
-            --form-string "title=${title}" \
-            --form-string "priority=1" \
-            --form-string "html=1" \
-            https://api.pushover.net/1/messages.json)
-
-        http_code="${response: -3}"
-        if [ "$http_code" -ne 200 ]; then
-            echo "Warning: Failed to send Pushover error notification. HTTP status code: $http_code"
         fi
     fi
 }
@@ -100,7 +87,7 @@ scrub_pool() {
     if output=$(zpool scrub "$ZFS_POOL" 2>&1); then
         send_pushover_notification "<b>🛠️ Starting scrub on pool:</b> ${ZFS_POOL}" "ZFS Scrub Started"
     else
-        send_pushover_error_notification $'❌ <b>Failed to start scrub on pool:</b> '"${ZFS_POOL}"$'\n<pre>'"${output}"'</pre>' "ZFS Scrub Failed"
+        send_pushover_notification $'❌ <b>Failed to start scrub on pool:</b> '"${ZFS_POOL}"$'\n<pre>'"${output}"'</pre>' "ZFS Scrub Failed" 1
         return 1
     fi
 
@@ -117,10 +104,8 @@ scrub_pool() {
             echo "===================================================="
             echo "Scrub completed on pool: $ZFS_POOL"
             echo "===================================================="
-
             scan_line=$(printf "%s\n" "$status" | grep "scan:")
             send_pushover_notification "<b>✅ Scrub completed on pool:</b> ${ZFS_POOL}"$'\n<pre>'"${scan_line}"'</pre>' "ZFS Scrub Completed"
-
             break
         elif echo "$scrub_line" | grep -q "scrub in progress"; then
             continue
@@ -129,7 +114,7 @@ scrub_pool() {
             continue
         else
             echo "Unexpected scrub status on pool: ${ZFS_POOL}, status: ${scrub_line}"
-            send_pushover_error_notification "❌ Unexpected scrub status on pool: ${ZFS_POOL}"$'\n<pre>'"${scrub_line}"'</pre>' "ZFS Scrub Error"
+            send_pushover_notification "❌ Unexpected scrub status on pool: ${ZFS_POOL}"$'\n<pre>'"${scrub_line}"'</pre>' "ZFS Scrub Error" 1
             return 1
         fi
     done
@@ -145,6 +130,9 @@ cleanup_snapshots() {
         return
     fi
 
+    local success_count=0
+    local failure_count=0
+
     for line in "${snapshot_clone_pairs[@]}"; do
         temp_source=$(echo "$line" | awk -F '\t' '{print $1}' | cut -d'@' -f1)
         snapshot_name=$(echo "$line" | awk -F '\t' '{print $1}' | cut -d'@' -f2)
@@ -157,6 +145,7 @@ cleanup_snapshots() {
             echo "  Active PVC: ${active_pvc:-<empty>}"
             echo "Skipping this pair..."
             echo
+            ((failure_count++))
             continue
         fi
 
@@ -171,29 +160,39 @@ cleanup_snapshots() {
         echo "  → Promoting active PVC"
         if ! zfs promote "$active_pvc"; then
             echo "    Error: Failed to promote: $active_pvc"
+            ((failure_count++))
             continue
         fi
 
         echo "  → Destroying temporary source"
         if ! zfs destroy "$temp_source"; then
             echo "    Error: Failed to destroy dataset: $temp_source"
+            ((failure_count++))
             continue
         fi
 
         echo "  → Destroying snapshot"
         if ! zfs destroy "$active_pvc@$snapshot_name"; then
             echo "    Error: Failed to destroy snapshot: $active_pvc@$snapshot_name"
+            ((failure_count++))
             continue
         fi
 
         echo
         echo "  ✓ Cleanup complete for this pair"
         echo
+        ((success_count++))
     done
 
     echo "===================================================="
     echo "Cleanup completed on pool: $ZFS_POOL"
     echo "===================================================="
+
+    if [ "$success_count" -gt 0 ] && [ "$failure_count" -eq 0 ]; then
+        send_pushover_notification "<b>✅ Cleanup completed successfully on pool:</b> ${ZFS_POOL}"$'\n'"All $success_count snapshot pairs cleaned up." "ZFS Cleanup Completed"
+    elif [ "$failure_count" -gt 0 ]; then
+        send_pushover_notification "<b>⚠️ Cleanup completed with errors on pool:</b> ${ZFS_POOL}"$'\n'"Successful cleanups: $success_count"$'\n'"Failed cleanups: $failure_count" "ZFS Cleanup Completed with Errors"
+    fi
 }
 
 case "$ACTION" in
